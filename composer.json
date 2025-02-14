@@ -16,6 +16,6 @@
         "phpmailer/phpmailer": "^6.9"
     },
     "scripts": {
-      "start": "php -S 0.0.0.0:9000 -t /"
+      "start": "php -S 0.0.0.0:9000 -t api"
     }
 }
