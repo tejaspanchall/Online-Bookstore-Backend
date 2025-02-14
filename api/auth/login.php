@@ -1,6 +1,16 @@
 <?php
 require_once '../../config/database.php';
 
+// Set session cookie parameters before starting session
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'domain' => '.railway.app',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'None'
+]);
+
 session_start();
 
 header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
@@ -10,7 +20,8 @@ header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
+    http_response_code(200);
+    exit;
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -29,9 +40,13 @@ try {
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
+        // Clear any existing session data
+        session_unset();
         session_regenerate_id(true);
+        
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_email'] = $user['email'];
+        $_SESSION['role'] = $user['role'];
 
         echo json_encode([
             'status' => 'success',
@@ -39,7 +54,8 @@ try {
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'firstname' => $user['firstname'],
-                'lastname' => $user['lastname']
+                'lastname' => $user['lastname'],
+                'role' => $user['role']
             ]
         ]);
     } else {
