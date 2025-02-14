@@ -1,0 +1,18 @@
+{
+    "name": "shahd/backend",
+    "autoload": {
+        "psr-4": {
+            "Shahd\\Backend\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Tejas Panchal",
+            "email": "tejaspanchal127@gmail.com"
+        }
+    ],
+    "require": {
+        "vlucas/phpdotenv": "^5.6",
+        "phpmailer/phpmailer": "^6.9"
+    }
+}
