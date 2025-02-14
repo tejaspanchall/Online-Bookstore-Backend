@@ -1,15 +1,20 @@
 <?php
-// Local Connection
+require_once __DIR__ . '/../../vendor/autoload.php';
+
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
+
 $db_config = [
-    'host' => 'localhost',
-    'dbname' => 'bookstore',
-    'user' => 'postgres',
-    'password' => 'root'
+    'host' => getenv('DB_HOST'),
+    'port' => getenv('DB_PORT'),
+    'dbname' => getenv('DB_NAME'),
+    'user' => getenv('DB_USER'),
+    'password' => getenv('DB_PASSWORD')
 ];
 
 try {
     $pdo = new PDO(
-        "pgsql:host={$db_config['host']};dbname={$db_config['dbname']}",
+        "pgsql:host={$db_config['host']};port={$db_config['port']};dbname={$db_config['dbname']}",
         $db_config['user'],
         $db_config['password']
     );
@@ -17,4 +22,3 @@ try {
 } catch(PDOException $e) {
     die("Connection failed: " . $e->getMessage());
 }
-?>
