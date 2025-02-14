@@ -7,7 +7,7 @@ use PHPMailer\PHPMailer\Exception;
 
 session_start();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-seven.vercel.app');
+header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
@@ -45,7 +45,7 @@ if ($user) {
 
         $mail->isHTML(true);
         $mail->Subject = 'Password Reset Instructions';
-        $reset_link = "https://online-bookstore-seven.vercel.app/reset-password?token=$reset_token";
+        $reset_link = "https://online-bookstore-frontend.vercel.app/reset-password?token=$reset_token";
         $mail->Body = "Click the following link to reset your password: <a href='$reset_link'>$reset_link</a>";
 
         $mail->send();

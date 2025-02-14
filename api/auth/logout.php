@@ -20,7 +20,7 @@ if (ini_get("session.use_cookies")) {
 
 session_destroy();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-seven.vercel.app');
+header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
