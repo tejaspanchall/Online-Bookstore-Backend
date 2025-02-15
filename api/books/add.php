@@ -4,8 +4,6 @@ require 'vendor/autoload.php';
 
 use Cloudinary\Cloudinary;
 
-ini_set('session.cookie_samesite', 'None');
-ini_set('session.cookie_secure', 'true');
 session_start();
 
 header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
@@ -19,26 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-error_log('Session data: ' . print_r($_SESSION, true));
-
+// Check authentication
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode([
-        'error' => 'Please login to continue',
-        'session_status' => session_status(),
-        'session_id' => session_id()
-    ]);
+    echo json_encode(['error' => 'Please login to continue']);
     exit;
 }
 
-$cloudinary = new Cloudinary([
-    'cloud' => [
-        'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
-        'api_key'    => getenv('CLOUDINARY_API_KEY'),
-        'api_secret' => getenv('CLOUDINARY_API_SECRET'),
-    ],
-]);
-
+// Verify teacher role
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
     $stmt->execute([$_SESSION['user_id']]);
@@ -55,12 +41,26 @@ try {
     exit;
 }
 
+// Handle GET request for page load validation
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    echo json_encode(['status' => 'authorized']);
+    exit;
+}
+
+// Initialize Cloudinary
+$cloudinary = new Cloudinary([
+    'cloud' => [
+        'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
+        'api_key'    => getenv('CLOUDINARY_API_KEY'),
+        'api_secret' => getenv('CLOUDINARY_API_SECRET'),
+    ],
+]);
+
+// Process POST request for adding books
 $data = $_POST;
 if (empty($data)) {
     $data = json_decode(file_get_contents('php://input'), true) ?? [];
 }
-
-error_log('Received data: ' . print_r($data, true));
 
 $required = ['title', 'description', 'isbn', 'author'];
 foreach ($required as $field) {
