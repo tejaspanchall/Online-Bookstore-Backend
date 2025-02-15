@@ -12,6 +12,10 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit(0);
@@ -88,24 +92,27 @@ if (!empty($_FILES['image'])) {
         exit;
     }
 
-    try {
-        $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
-            'folder' => 'book_covers',
-            'transformation' => [
-                'width' => 800,
-                'height' => 1200,
-                'crop' => 'limit',
-                'quality' => 'auto',
-                'fetch_format' => 'auto'
-            ]
-        ]);
-        
-        $imagePath = $result['secure_url'];
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Failed to upload image: ' . $e->getMessage()]);
-        exit;
-    }
+    // In add.php, around the Cloudinary upload section
+try {
+    error_log('Attempting to upload image to Cloudinary...');
+    $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
+        'folder' => 'book_covers',
+        'transformation' => [
+            'width' => 800,
+            'height' => 1200,
+            'crop' => 'limit',
+            'quality' => 'auto',
+            'fetch_format' => 'auto'
+        ]
+    ]);
+    error_log('Upload successful: ' . print_r($result, true));
+    $imagePath = $result['secure_url'];
+} catch (Exception $e) {
+    error_log('Cloudinary upload error: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to upload image: ' . $e->getMessage()]);
+    exit;
+}
 }
 
 try {
