@@ -1,5 +1,9 @@
 <?php
 require_once '../../config/database.php';
+require 'vendor/autoload.php';
+
+use Cloudinary\Cloudinary;
+use Cloudinary\Transformation\Transformation;
 
 session_start();
 
@@ -30,6 +34,15 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// Initialize Cloudinary
+$cloudinary = new Cloudinary([
+    'cloud' => [
+        'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
+        'api_key'    => getenv('CLOUDINARY_API_KEY'),
+        'api_secret' => getenv('CLOUDINARY_API_SECRET'),
+    ],
+]);
+
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
     $stmt->execute([$_SESSION['user_id']]);
@@ -57,16 +70,8 @@ foreach ($required as $field) {
 
 $imagePath = null;
 if (!empty($_FILES['image'])) {
-    $uploadDir = '../../uploads/book_covers/';
-    
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    $imageFileName = uniqid() . '_' . basename($_FILES['image']['name']);
-    $targetFilePath = $uploadDir . $imageFileName;
-
-    $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+    // Validate file type
+    $imageFileType = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
     $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     if (!in_array($imageFileType, $allowedTypes)) {
@@ -75,17 +80,30 @@ if (!empty($_FILES['image'])) {
         exit;
     }
 
+    // Validate file size (5MB max)
     if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
         http_response_code(400);
         echo json_encode(['error' => 'Image too large (max 5MB)']);
         exit;
     }
 
-    if (move_uploaded_file($_FILES['image']['tmp_name'], $targetFilePath)) {
-        $imagePath = '/online-bookstore/backend/uploads/book_covers/' . $imageFileName;
-    } else {
+    try {
+        // Upload to Cloudinary
+        $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
+            'folder' => 'book_covers',
+            'transformation' => [
+                'width' => 800,
+                'height' => 1200,
+                'crop' => 'limit',
+                'quality' => 'auto',
+                'fetch_format' => 'auto'
+            ]
+        ]);
+        
+        $imagePath = $result['secure_url'];
+    } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(['error' => 'Failed to upload image']);
+        echo json_encode(['error' => 'Failed to upload image: ' . $e->getMessage()]);
         exit;
     }
 }
