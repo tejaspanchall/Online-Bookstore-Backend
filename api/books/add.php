@@ -3,31 +3,34 @@ require_once '../../config/database.php';
 require 'vendor/autoload.php';
 
 use Cloudinary\Cloudinary;
-use Cloudinary\Transformation\Transformation;
 
 session_start();
 
 header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
+// Handle preflight request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit(0);
 }
 
+// Check login status for GET request
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    if (!isset($_SESSION['user_id'])) {
+    if (isset($_SESSION['user_id'])) {
+        http_response_code(200);
+        echo json_encode(['success' => true, 'message' => 'User is logged in']);
+    } else {
         http_response_code(401);
         echo json_encode(['error' => 'Please login to continue']);
-    } else {
-        echo json_encode(['success' => true, 'message' => 'User is logged in']);
     }
     exit;
 }
 
+// For POST requests, check user authentication
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Please login to continue']);
@@ -43,6 +46,7 @@ $cloudinary = new Cloudinary([
     ],
 ]);
 
+// Check if user is a teacher
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
     $stmt->execute([$_SESSION['user_id']]);
@@ -59,9 +63,15 @@ try {
     exit;
 }
 
+// Handle form data
+$data = $_POST;
+if (empty($data)) {
+    $data = json_decode(file_get_contents('php://input'), true);
+}
+
 $required = ['title', 'description', 'isbn', 'author'];
 foreach ($required as $field) {
-    if (empty($_POST[$field])) {
+    if (empty($data[$field])) {
         http_response_code(400);
         echo json_encode(['error' => "Missing required field: $field"]);
         exit;
@@ -70,7 +80,6 @@ foreach ($required as $field) {
 
 $imagePath = null;
 if (!empty($_FILES['image'])) {
-    // Validate file type
     $imageFileType = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
     $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
@@ -80,7 +89,6 @@ if (!empty($_FILES['image'])) {
         exit;
     }
 
-    // Validate file size (5MB max)
     if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
         http_response_code(400);
         echo json_encode(['error' => 'Image too large (max 5MB)']);
@@ -88,7 +96,6 @@ if (!empty($_FILES['image'])) {
     }
 
     try {
-        // Upload to Cloudinary
         $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
             'folder' => 'book_covers',
             'transformation' => [
@@ -112,7 +119,7 @@ try {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("SELECT id FROM books WHERE isbn = ?");
-    $stmt->execute([$_POST['isbn']]);
+    $stmt->execute([$data['isbn']]);
     $existingBook = $stmt->fetch();
 
     if ($existingBook) {
@@ -124,15 +131,16 @@ try {
 
     $stmt = $pdo->prepare("INSERT INTO books (title, image, description, isbn, author) VALUES (?, ?, ?, ?, ?)");
     $stmt->execute([
-        $_POST['title'],
+        $data['title'],
         $imagePath,
-        $_POST['description'],
-        $_POST['isbn'],
-        $_POST['author']
+        $data['description'],
+        $data['isbn'],
+        $data['author']
     ]);
     $bookId = $pdo->lastInsertId();
 
     $pdo->commit();
+    http_response_code(200);
     echo json_encode([
         'status' => 'success',
         'message' => 'Book added successfully',
