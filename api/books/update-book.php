@@ -1,5 +1,9 @@
 <?php
 require_once '../../config/database.php';
+require 'vendor/autoload.php';
+
+use Cloudinary\Cloudinary;
+
 session_start();
 
 header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
@@ -19,6 +23,15 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// Initialize Cloudinary
+$cloudinary = new Cloudinary([
+    'cloud' => [
+        'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
+        'api_key'    => getenv('CLOUDINARY_API_KEY'),
+        'api_secret' => getenv('CLOUDINARY_API_SECRET'),
+    ],
+]);
+
 $required = ['id', 'title', 'author', 'isbn', 'description'];
 foreach ($required as $field) {
     if (empty($_POST[$field])) {
@@ -30,16 +43,8 @@ foreach ($required as $field) {
 
 $imagePath = null;
 if (!empty($_FILES['image'])) {
-    $uploadDir = '../../uploads/book_covers/';
-    
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    $imageFileName = uniqid() . '_' . basename($_FILES['image']['name']);
-    $targetFilePath = $uploadDir . $imageFileName;
-
-    $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
+    // Validate file type
+    $imageFileType = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
     $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     if (!in_array($imageFileType, $allowedTypes)) {
@@ -48,25 +53,51 @@ if (!empty($_FILES['image'])) {
         exit;
     }
 
+    // Validate file size (5MB max)
     if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
         http_response_code(400);
         echo json_encode(['error' => 'Image too large (max 5MB)']);
         exit;
     }
 
-    if (move_uploaded_file($_FILES['image']['tmp_name'], $targetFilePath)) {
+    try {
+        // Get the old image URL to extract public_id for deletion
         $stmt = $pdo->prepare("SELECT image FROM books WHERE id = ?");
         $stmt->execute([$_POST['id']]);
-        $oldImage = $stmt->fetchColumn();
+        $oldImageUrl = $stmt->fetchColumn();
 
-        $imagePath = '/online-bookstore/backend/uploads/book_covers/' . $imageFileName;
-
-        if ($oldImage) {
-            $oldImagePath = str_replace('/online-bookstore/backend', '..', $oldImage);
-            if (file_exists($oldImagePath)) {
-                unlink($oldImagePath);
+        // If there's an old image, delete it from Cloudinary
+        if ($oldImageUrl) {
+            // Extract public_id from the URL
+            $parsedUrl = parse_url($oldImageUrl);
+            $pathParts = explode('/', $parsedUrl['path']);
+            $publicId = 'book_covers/' . pathinfo(end($pathParts), PATHINFO_FILENAME);
+            
+            try {
+                $cloudinary->uploadApi()->destroy($publicId);
+            } catch (Exception $e) {
+                // Log error but continue with new upload
+                error_log('Failed to delete old image: ' . $e->getMessage());
             }
         }
+
+        // Upload new image to Cloudinary
+        $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
+            'folder' => 'book_covers',
+            'transformation' => [
+                'width' => 800,
+                'height' => 1200,
+                'crop' => 'limit',
+                'quality' => 'auto',
+                'fetch_format' => 'auto'
+            ]
+        ]);
+        
+        $imagePath = $result['secure_url'];
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to upload image: ' . $e->getMessage()]);
+        exit;
     }
 }
 
