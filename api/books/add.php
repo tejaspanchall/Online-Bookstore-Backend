@@ -4,6 +4,8 @@ require 'vendor/autoload.php';
 
 use Cloudinary\Cloudinary;
 
+ini_set('session.cookie_samesite', 'None');
+ini_set('session.cookie_secure', 'true');
 session_start();
 
 header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
@@ -12,32 +14,23 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
-// Handle preflight request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit(0);
 }
 
-// Check login status for GET request
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    if (isset($_SESSION['user_id'])) {
-        http_response_code(200);
-        echo json_encode(['success' => true, 'message' => 'User is logged in']);
-    } else {
-        http_response_code(401);
-        echo json_encode(['error' => 'Please login to continue']);
-    }
-    exit;
-}
+error_log('Session data: ' . print_r($_SESSION, true));
 
-// For POST requests, check user authentication
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['error' => 'Please login to continue']);
+    echo json_encode([
+        'error' => 'Please login to continue',
+        'session_status' => session_status(),
+        'session_id' => session_id()
+    ]);
     exit;
 }
 
-// Initialize Cloudinary
 $cloudinary = new Cloudinary([
     'cloud' => [
         'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
@@ -46,13 +39,12 @@ $cloudinary = new Cloudinary([
     ],
 ]);
 
-// Check if user is a teacher
 try {
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
     $stmt->execute([$_SESSION['user_id']]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($user['role'] !== 'teacher') {
+    if (!$user || $user['role'] !== 'teacher') {
         http_response_code(403);
         echo json_encode(['error' => 'Only teachers can add books']);
         exit;
@@ -63,11 +55,12 @@ try {
     exit;
 }
 
-// Handle form data
 $data = $_POST;
 if (empty($data)) {
-    $data = json_decode(file_get_contents('php://input'), true);
+    $data = json_decode(file_get_contents('php://input'), true) ?? [];
 }
+
+error_log('Received data: ' . print_r($data, true));
 
 $required = ['title', 'description', 'isbn', 'author'];
 foreach ($required as $field) {
