@@ -1,27 +1,20 @@
 <?php
 require_once '../../config/database.php';
+use Dotenv\Dotenv;
 
-// Set session cookie parameters before starting session
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path' => '/',
-    'domain' => '.railway.app',
-    'secure' => true,
-    'httponly' => true,
-    'samesite' => 'None'
-]);
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
 
 session_start();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+    exit(0);
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -40,13 +33,9 @@ try {
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
-        // Clear any existing session data
-        session_unset();
         session_regenerate_id(true);
-        
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_email'] = $user['email'];
-        $_SESSION['role'] = $user['role'];
 
         echo json_encode([
             'status' => 'success',
@@ -54,8 +43,7 @@ try {
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'firstname' => $user['firstname'],
-                'lastname' => $user['lastname'],
-                'role' => $user['role']
+                'lastname' => $user['lastname']
             ]
         ]);
     } else {

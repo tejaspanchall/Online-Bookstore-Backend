@@ -4,10 +4,14 @@ require '../../vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use Dotenv\Dotenv;
+
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
 
 session_start();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
@@ -45,7 +49,7 @@ if ($user) {
 
         $mail->isHTML(true);
         $mail->Subject = 'Password Reset Instructions';
-        $reset_link = "https://online-bookstore-frontend.vercel.app/reset-password?token=$reset_token";
+        $reset_link = "http://localhost:3000/reset-password?token=$reset_token";
         $mail->Body = "Click the following link to reset your password: <a href='$reset_link'>$reset_link</a>";
 
         $mail->send();

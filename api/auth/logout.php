@@ -19,8 +19,12 @@ if (ini_get("session.use_cookies")) {
 }
 
 session_destroy();
+use Dotenv\Dotenv;
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
+
+header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 

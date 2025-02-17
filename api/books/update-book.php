@@ -1,114 +1,146 @@
 <?php
 require_once '../../config/database.php';
-require 'vendor/autoload.php';
+require_once '../../config/cloudinary.php';
+use Dotenv\Dotenv;
 
-use Cloudinary\Cloudinary;
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
 
 session_start();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
-// Handle preflight request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
-// Check login status
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
+function sendResponse($data, $statusCode = 200) {
+    http_response_code($statusCode);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-// Initialize Cloudinary
-$cloudinary = new Cloudinary([
-    'cloud' => [
-        'cloud_name' => getenv('CLOUDINARY_CLOUD_NAME'),
-        'api_key'    => getenv('CLOUDINARY_API_KEY'),
-        'api_secret' => getenv('CLOUDINARY_API_SECRET'),
-    ],
-]);
+if (!$cloudinary) {
+    sendResponse(['error' => 'Image upload service not configured'], 500);
+}
 
-// Handle form data
-$data = $_POST;
-if (empty($data)) {
-    $data = json_decode(file_get_contents('php://input'), true);
+if (!isset($_SESSION['user_id'])) {
+    sendResponse(['error' => 'Please login to continue'], 401);
+}
+
+try {
+    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user || $user['role'] !== 'teacher') {
+        sendResponse(['error' => 'Only teachers can update books'], 403);
+    }
+} catch(PDOException $e) {
+    error_log('Database error: ' . $e->getMessage());
+    sendResponse(['error' => 'Server error occurred'], 500);
 }
 
 $required = ['id', 'title', 'author', 'isbn', 'description'];
+$data = [];
 foreach ($required as $field) {
-    if (empty($data[$field])) {
-        http_response_code(400);
-        echo json_encode(['error' => "Missing required field: $field"]);
-        exit;
+    if (!isset($_POST[$field]) || trim($_POST[$field]) === '') {
+        sendResponse(['error' => "Missing required field: $field"], 400);
     }
+    $data[$field] = trim($_POST[$field]);
 }
 
-$imagePath = null;
-if (!empty($_FILES['image'])) {
-    $imageFileType = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
-    $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+try {
+    $stmt = $pdo->prepare("SELECT * FROM books WHERE id = ?");
+    $stmt->execute([$data['id']]);
+    $currentBook = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$currentBook) {
+        sendResponse(['error' => 'Book not found'], 404);
+    }
+} catch(PDOException $e) {
+    error_log('Database error: ' . $e->getMessage());
+    sendResponse(['error' => 'Server error occurred'], 500);
+}
 
-    if (!in_array($imageFileType, $allowedTypes)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid image type']);
-        exit;
+$imageUrl = null;
+if (!empty($_FILES['image'])) {
+    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    
+    if (!in_array($_FILES['image']['type'], $allowedTypes)) {
+        sendResponse(['error' => 'Invalid image type. Allowed types: JPG, PNG, GIF, WEBP'], 400);
     }
 
     if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Image too large (max 5MB)']);
-        exit;
+        sendResponse(['error' => 'Image too large (max 5MB)'], 400);
     }
 
     try {
-        // Get the old image URL
-        $stmt = $pdo->prepare("SELECT image FROM books WHERE id = ?");
-        $stmt->execute([$data['id']]);
-        $oldImageUrl = $stmt->fetchColumn();
-
-        // Delete old image from Cloudinary if it exists
-        if ($oldImageUrl) {
-            try {
-                $parsedUrl = parse_url($oldImageUrl);
-                $pathParts = explode('/', $parsedUrl['path']);
-                $publicId = 'book_covers/' . pathinfo(end($pathParts), PATHINFO_FILENAME);
-                $cloudinary->uploadApi()->destroy($publicId);
-            } catch (Exception $e) {
-                // Log error but continue with new upload
-                error_log('Failed to delete old image: ' . $e->getMessage());
+        if ($currentBook['image']) {
+            preg_match('/book_covers\/[^.]+/', $currentBook['image'], $matches);
+            if (!empty($matches)) {
+                try {
+                    $cloudinary->uploadApi()->destroy($matches[0]);
+                } catch (Exception $e) {
+                    error_log('Failed to delete old image: ' . $e->getMessage());
+                }
             }
         }
 
-        // Upload new image
-        $result = $cloudinary->uploadApi()->upload($_FILES['image']['tmp_name'], [
-            'folder' => 'book_covers',
-            'transformation' => [
-                'width' => 800,
-                'height' => 1200,
-                'crop' => 'limit',
-                'quality' => 'auto',
-                'fetch_format' => 'auto'
+        $result = $cloudinary->uploadApi()->upload(
+            $_FILES['image']['tmp_name'],
+            [
+                'folder' => 'book_covers',
+                'resource_type' => 'image',
+                'transformation' => [
+                    'quality' => 'auto',
+                    'fetch_format' => 'auto',
+                    'width' => 800,
+                    'height' => 1200,
+                    'crop' => 'limit'
+                ]
             ]
-        ]);
-        
-        $imagePath = $result['secure_url'];
+        );
+        $imageUrl = $result['secure_url'];
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Failed to upload image: ' . $e->getMessage()]);
-        exit;
+        error_log('Cloudinary upload failed: ' . $e->getMessage());
+        sendResponse(['error' => 'Failed to upload image'], 500);
     }
 }
 
 try {
     $pdo->beginTransaction();
 
-    $sql = "UPDATE books SET title = :title, author = :author, isbn = :isbn, description = :description";
+    $stmt = $pdo->prepare("SELECT id FROM books WHERE isbn = ? AND id != ?");
+    $stmt->execute([$data['isbn'], $data['id']]);
+    if ($stmt->fetch()) {
+        if ($imageUrl) {
+            try {
+                preg_match('/book_covers\/[^.]+/', $imageUrl, $matches);
+                if (!empty($matches)) {
+                    $cloudinary->uploadApi()->destroy($matches[0]);
+                }
+            } catch (Exception $e) {
+                error_log('Failed to delete new image: ' . $e->getMessage());
+            }
+        }
+        
+        $pdo->rollBack();
+        sendResponse(['error' => 'Another book with this ISBN already exists'], 400);
+    }
+
+    $sql = "UPDATE books SET 
+            title = :title, 
+            author = :author, 
+            isbn = :isbn, 
+            description = :description,
+            updated_at = NOW()";
+    
     $params = [
         ':id' => $data['id'],
         ':title' => $data['title'],
@@ -117,29 +149,50 @@ try {
         ':description' => $data['description']
     ];
 
-    if ($imagePath) {
+    if ($imageUrl) {
         $sql .= ", image = :image";
-        $params[':image'] = $imagePath;
+        $params[':image'] = $imageUrl;
     }
 
     $sql .= " WHERE id = :id";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-
+    
+    if ($stmt->rowCount() === 0) {
+        $pdo->rollBack();
+        sendResponse(['error' => 'No changes were made to the book'], 400);
+    }
+    
     $pdo->commit();
-    http_response_code(200);
-    echo json_encode([
-        'success' => true,
+
+    sendResponse([
+        'status' => 'success',
         'message' => 'Book updated successfully',
-        'image_path' => $imagePath
+        'data' => [
+            'id' => $data['id'],
+            'title' => $data['title'],
+            'author' => $data['author'],
+            'isbn' => $data['isbn'],
+            'description' => $data['description'],
+            'image_url' => $imageUrl ?? $currentBook['image']
+        ]
     ]);
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
     $pdo->rollBack();
-    http_response_code(500);
-    echo json_encode([
-        'error' => 'Database error',
-        'message' => $e->getMessage()
-    ]);
+    
+    if ($imageUrl) {
+        try {
+            preg_match('/book_covers\/[^.]+/', $imageUrl, $matches);
+            if (!empty($matches)) {
+                $cloudinary->uploadApi()->destroy($matches[0]);
+            }
+        } catch (Exception $deleteError) {
+            error_log('Failed to delete new image: ' . $deleteError->getMessage());
+        }
+    }
+    
+    error_log('Error updating book: ' . $e->getMessage());
+    sendResponse(['error' => 'Failed to update book'], 500);
 }

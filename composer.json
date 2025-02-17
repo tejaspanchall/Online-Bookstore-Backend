@@ -14,9 +14,6 @@
     "require": {
         "vlucas/phpdotenv": "^5.6",
         "phpmailer/phpmailer": "^6.9",
-        "cloudinary/cloudinary_php": "*"
-    },
-    "scripts": {
-      "start": "php -S 0.0.0.0:9000 -t api"
+        "cloudinary/cloudinary_php": "^3.1"
     }
 }

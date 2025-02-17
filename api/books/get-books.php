@@ -1,7 +1,13 @@
 <?php
 require_once '../../config/database.php';
+use Dotenv\Dotenv;
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
+
+session_start();
+
+header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');

@@ -1,7 +1,6 @@
 <?php
 require_once '../../config/database.php';
 
-// Set session cookie parameters before starting session
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
@@ -11,9 +10,16 @@ session_set_cookie_params([
     'samesite' => 'None'
 ]);
 
+use Dotenv\Dotenv;
+
 session_start();
 
-header('Access-Control-Allow-Origin: https://online-bookstore-frontend.vercel.app');
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
+$dotenv->load();
+
+$frontendUrl = $_ENV['FRONTEND'];
+
+header("Access-Control-Allow-Origin: $frontendUrl");
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Accept');
@@ -24,7 +30,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Check if session exists and contains user_id
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'No active session']);
@@ -37,7 +42,6 @@ try {
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($user) {
-        // Update session with current user data
         $_SESSION['user_email'] = $user['email'];
         $_SESSION['role'] = $user['role'];
         
@@ -52,7 +56,6 @@ try {
             ]
         ]);
     } else {
-        // User no longer exists in database
         session_destroy();
         http_response_code(401);
         echo json_encode(['error' => 'Invalid session']);
