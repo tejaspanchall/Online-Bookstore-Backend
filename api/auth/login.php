@@ -38,6 +38,7 @@ try {
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_email'] = $user['email'];
+        $_SESSION['user_role'] = $user['role'];
 
         echo json_encode([
             'status' => 'success',
@@ -45,7 +46,8 @@ try {
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'firstname' => $user['firstname'],
-                'lastname' => $user['lastname']
+                'lastname' => $user['lastname'],
+                'role' => $user['role']
             ]
         ]);
     } else {

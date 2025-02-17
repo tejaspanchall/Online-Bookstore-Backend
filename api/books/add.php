@@ -1,6 +1,5 @@
 <?php
 require_once '../../config/database.php';
-require_once '../../config/cloudinary.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 use Dotenv\Dotenv;
 
@@ -26,10 +25,6 @@ function sendResponse($data, $statusCode = 200) {
     exit;
 }
 
-if (!$cloudinary) {
-    sendResponse(['error' => 'Image upload service not configured'], 500);
-}
-
 if (!isset($_SESSION['user_id'])) {
     sendResponse(['error' => 'Please login to continue'], 401);
 }
@@ -39,56 +34,34 @@ try {
     $stmt->execute([$_SESSION['user_id']]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($user['role'] !== 'teacher') {
+    if (!$user || $user['role'] !== 'teacher') {
         sendResponse(['error' => 'Only teachers can add books'], 403);
     }
 } catch(PDOException $e) {
     error_log('Database error: ' . $e->getMessage());
     sendResponse(['error' => 'Server error occurred'], 500);
 }
-$required = ['title', 'description', 'isbn', 'author'];
-$data = [];
-foreach ($required as $field) {
-    if (!isset($_POST[$field]) || trim($_POST[$field]) === '') {
-        sendResponse(['error' => "Missing required field: $field"], 400);
-    }
-    $data[$field] = trim($_POST[$field]);
+
+$json = file_get_contents('php://input');
+if (!$json) {
+    sendResponse(['error' => 'No data received'], 400);
 }
 
-// Handle image upload
-$imageUrl = null;
-if (!empty($_FILES['image'])) {
-    // Validate image
-    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    
-    if (!in_array($_FILES['image']['type'], $allowedTypes)) {
-        sendResponse(['error' => 'Invalid image type. Allowed types: JPG, PNG, GIF, WEBP'], 400);
-    }
+$data = json_decode($json, true);
+if (json_last_error() !== JSON_ERROR_NONE) {
+    sendResponse(['error' => 'Invalid JSON data: ' . json_last_error_msg()], 400);
+}
 
-    if ($_FILES['image']['size'] > 5 * 1024 * 1024) {
-        sendResponse(['error' => 'Image too large (max 5MB)'], 400);
+$required = ['title', 'description', 'isbn', 'author', 'image'];
+foreach ($required as $field) {
+    if (!isset($data[$field]) || trim($data[$field]) === '') {
+        sendResponse(['error' => "Missing required field: $field"], 400);
     }
+    $data[$field] = trim($data[$field]);
+}
 
-    try {
-        $result = $cloudinary->uploadApi()->upload(
-            $_FILES['image']['tmp_name'],
-            [
-                'folder' => 'book_covers',
-                'resource_type' => 'image',
-                'transformation' => [
-                    'quality' => 'auto',
-                    'fetch_format' => 'auto',
-                    'width' => 800,
-                    'height' => 1200,
-                    'crop' => 'limit'
-                ]
-            ]
-        );
-        $imageUrl = $result['secure_url'];
-    } catch (Exception $e) {
-        error_log('Cloudinary upload failed: ' . $e->getMessage());
-        sendResponse(['error' => 'Failed to upload image'], 500);
-    }
+if (!filter_var($data['image'], FILTER_VALIDATE_URL)) {
+    sendResponse(['error' => 'Invalid image URL'], 400);
 }
 
 try {
@@ -97,29 +70,18 @@ try {
     $stmt = $pdo->prepare("SELECT id FROM books WHERE isbn = ?");
     $stmt->execute([$data['isbn']]);
     if ($stmt->fetch()) {
-        if ($imageUrl) {
-            try {
-                preg_match('/book_covers\/[^.]+/', $imageUrl, $matches);
-                if (!empty($matches)) {
-                    $cloudinary->uploadApi()->destroy($matches[0]);
-                }
-            } catch (Exception $e) {
-                error_log('Failed to delete uploaded image: ' . $e->getMessage());
-            }
-        }
-        
         $pdo->rollBack();
         sendResponse(['error' => 'A book with this ISBN already exists'], 400);
     }
 
     $stmt = $pdo->prepare("
-        INSERT INTO books (title, image, description, isbn, author, created_at) 
-        VALUES (?, ?, ?, ?, ?, NOW())
+        INSERT INTO books (title, image, description, isbn, author) 
+        VALUES (?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
         $data['title'],
-        $imageUrl,
+        $data['image'],
         $data['description'],
         $data['isbn'],
         $data['author']
@@ -137,24 +99,16 @@ try {
             'author' => $data['author'],
             'isbn' => $data['isbn'],
             'description' => $data['description'],
-            'image_url' => $imageUrl
+            'image' => $data['image']
         ]
     ]);
 
+} catch (PDOException $e) {
+    $pdo->rollBack();
+    error_log('Database error: ' . $e->getMessage());
+    sendResponse(['error' => 'Database error: ' . $e->getMessage()], 500);
 } catch (Exception $e) {
     $pdo->rollBack();
-    
-    if ($imageUrl) {
-        try {
-            preg_match('/book_covers\/[^.]+/', $imageUrl, $matches);
-            if (!empty($matches)) {
-                $cloudinary->uploadApi()->destroy($matches[0]);
-            }
-        } catch (Exception $deleteError) {
-            error_log('Failed to delete uploaded image: ' . $deleteError->getMessage());
-        }
-    }
-    
     error_log('Error adding book: ' . $e->getMessage());
-    sendResponse(['error' => 'Failed to add book'], 500);
+    sendResponse(['error' => 'Failed to add book: ' . $e->getMessage()], 500);
 }

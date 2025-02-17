@@ -29,7 +29,6 @@ foreach ($required as $field) {
     }
 }
 
-// Validate role
 if (!in_array($data['role'], ['teacher', 'student'])) {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid role']);
