@@ -1,5 +1,6 @@
 <?php
 require_once '../../config/database.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 
 session_set_cookie_params([
     'lifetime' => 0,
