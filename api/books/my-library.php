@@ -83,7 +83,6 @@ try {
     $addToLibrary = $pdo->prepare("
         INSERT INTO user_books (user_id, book_id) 
         VALUES (:userId, :bookId)
-        ON CONFLICT (user_id, book_id) DO NOTHING
     ");
     
     $addToLibrary->execute([
