@@ -1,10 +1,9 @@
 <?php
-require __DIR__ . '/../vendor/autoload.php'; // Load Composer packages
+require __DIR__ . '/../vendor/autoload.php';
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../'); // Load .env file
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->load();
 
-// Fetch DB credentials from .env
 $host = $_ENV["PGHOST"];
 $dbname = $_ENV["PGDATABASE"];
 $user = $_ENV["PGUSER"];

@@ -1,22 +1,24 @@
 <?php
 require_once '../../config/database.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
+
 use Dotenv\Dotenv;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
 $dotenv->load();
 
-session_start();
-
 header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+    exit(0);
+}
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
@@ -43,12 +45,18 @@ try {
         exit;
     }
     
-    echo json_encode($book);
+    echo json_encode($book, JSON_THROW_ON_ERROR);
 
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode([
         'error' => 'Database error',
+        'message' => $e->getMessage()
+    ]);
+} catch (JsonException $e) {
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'JSON encoding error',
         'message' => $e->getMessage()
     ]);
 }

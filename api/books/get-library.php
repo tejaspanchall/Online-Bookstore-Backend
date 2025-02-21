@@ -1,17 +1,17 @@
 <?php
 require_once '../../config/database.php';
+require_once __DIR__ . '/../middleware.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
+
 use Dotenv\Dotenv;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
 $dotenv->load();
 
-session_start();
-
 header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -19,13 +19,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
-
 try {
+    JWTMiddleware::initialize($_ENV['JWT_SECRET_KEY']);
+    $tokenData = JWTMiddleware::validateToken();
+
+    if (!$tokenData || !isset($tokenData->userId)) {
+        throw new Exception('Invalid or missing authentication');
+    }
+
+    $userId = $tokenData->userId;
+    
     $stmt = $pdo->prepare("
         SELECT b.id, b.title, b.author, b.isbn, b.image, b.description
         FROM books b
@@ -34,21 +37,19 @@ try {
         ORDER BY b.title ASC
     ");
     
-    $stmt->execute([':userId' => $_SESSION['user_id']]);
+    $stmt->execute([':userId' => $userId]);
     $books = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    echo json_encode($books);
-
-} catch (PDOException $e) {
-    http_response_code(500);
     echo json_encode([
-        'error' => 'Database error',
-        'message' => $e->getMessage()
+        'status' => 'success',
+        'data' => $books
     ]);
+
 } catch (Exception $e) {
-    http_response_code(500);
+    $statusCode = $e instanceof PDOException ? 500 : 401;
+    http_response_code($statusCode);
     echo json_encode([
-        'error' => 'Server error',
-        'message' => $e->getMessage()
+        'status' => 'error',
+        'message' => $statusCode === 500 ? 'Database error occurred' : $e->getMessage()
     ]);
 }

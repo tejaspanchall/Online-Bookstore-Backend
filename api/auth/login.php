@@ -1,5 +1,6 @@
 <?php
 require_once '../../config/database.php';
+require_once __DIR__ . '/../middleware.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Dotenv\Dotenv;
@@ -7,7 +8,7 @@ use Dotenv\Dotenv;
 $dotenv = Dotenv::createImmutable(__DIR__ . '/../../');
 $dotenv->load();
 
-session_start();
+JWTMiddleware::initialize($_ENV['JWT_SECRET_KEY']);
 
 header('Access-Control-Allow-Origin: ' . $_ENV['FRONTEND']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -35,13 +36,11 @@ try {
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password'])) {
-        session_regenerate_id(true);
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_email'] = $user['email'];
-        $_SESSION['user_role'] = $user['role'];
-
+        $token = JWTMiddleware::generateToken($user['id'], $user['email'], $user['role']);
+        
         echo json_encode([
             'status' => 'success',
+            'token' => $token,
             'user' => [
                 'id' => $user['id'],
                 'email' => $user['email'],
